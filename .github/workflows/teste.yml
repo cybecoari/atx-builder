@@ -1,9 +1,46 @@
-name: Teste
+name: Teste Apktool
+
 on:
   workflow_dispatch:
+
 jobs:
-  oi:
+  testar:
     runs-on: ubuntu-latest
     steps:
-      - name: Dizer oi
-        run: echo oi
+      - name: Baixar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar apktool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          sudo wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar -O /usr/local/bin/apktool.jar
+          sudo wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool
+          sudo chmod +x /usr/local/bin/apktool
+          sudo sed -i 's|^exec java -jar .*|exec java -jar /usr/local/bin/apktool.jar "$@"|' /usr/local/bin/apktool
+          apktool --version
+
+      - name: Desmontar APK
+        run: |
+          apktool d -f atx_3.0_src.apk -o decoded
+
+      - name: Remontar APK
+        run: |
+          apktool b decoded -o rebuild.apk
+
+      - name: Mostrar resultado
+        run: |
+          ls -lh rebuild.apk
+          echo "APK reconstruido com sucesso"
+
+      - name: Publicar APK teste
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-teste
+          path: rebuild.apk
