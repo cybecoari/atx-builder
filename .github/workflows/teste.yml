@@ -1,11 +1,9 @@
 name: Teste
-
 on:
   workflow_dispatch:
-
 jobs:
   oi:
     runs-on: ubuntu-latest
     steps:
       - name: Dizer oi
-        run: echo "GitHub funcionando"
+        run: echo oi
