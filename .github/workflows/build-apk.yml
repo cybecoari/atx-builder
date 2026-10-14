@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       app_name:
-        description: 'Nome exibido no Android'
+        description: Nome exibido no Android
         required: true
         type: string
-        default: 'ATX Cliente'
+        default: ATX Cliente
       credential:
-        description: 'Credencial ATX deste cliente'
+        description: Credencial ATX deste cliente
         required: true
         type: string
 
@@ -26,9 +26,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar apktool e ferramentas
+      - name: Instalar apktool
         run: |
-          set -e
           sudo apt-get update
           sudo apt-get install -y wget zipalign
           sudo wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar -O /usr/local/bin/apktool.jar
@@ -39,7 +38,6 @@ jobs:
 
       - name: Baixar Android build-tools
         run: |
-          set -e
           mkdir -p $HOME/android-sdk/cmdline-tools
           cd $HOME/android-sdk/cmdline-tools
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
@@ -48,18 +46,15 @@ jobs:
           yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
           $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0" > /dev/null
           echo "ANDROID_BT=$HOME/android-sdk/build-tools/35.0.0" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/build-tools/35.0.0" >> $GITHUB_PATH
 
       - name: Desmontar APK original
-        run: |
-          apktool d -f atx_3.0_src.apk -o decoded
+        run: apktool d -f atx_3.0_src.apk -o decoded
 
-      - name: Personalizar (nome + credencial)
+      - name: Personalizar nome e credencial
         env:
           APP_NAME: ${{ inputs.app_name }}
           ATX_CREDENTIAL: ${{ inputs.credential }}
-        run: |
-          python3 scripts/customize.py decoded "$APP_NAME" "$ATX_CREDENTIAL"
+        run: python3 scripts/customize.py decoded "$APP_NAME" "$ATX_CREDENTIAL"
 
       - name: Reconstruir APK
         run: |
@@ -73,18 +68,8 @@ jobs:
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          set -e
-          if [ -z "$KEYSTORE_B64" ]; then
-            echo "Configure os 4 secrets de assinatura" >&2
-            exit 3
-          fi
           printf '%s' "$KEYSTORE_B64" | base64 --decode > $RUNNER_TEMP/ks.jks
-          $ANDROID_BT/apksigner sign \
-            --ks $RUNNER_TEMP/ks.jks \
-            --ks-key-alias "$KEY_ALIAS" \
-            --ks-pass env:KS_PASS \
-            --key-pass env:KEY_PASS \
-            --out atx-signed.apk atx-aligned.apk
+          $ANDROID_BT/apksigner sign --ks $RUNNER_TEMP/ks.jks --ks-key-alias "$KEY_ALIAS" --ks-pass env:KS_PASS --key-pass env:KEY_PASS --out atx-signed.apk atx-aligned.apk
           $ANDROID_BT/apksigner verify --verbose atx-signed.apk
           rm -f $RUNNER_TEMP/ks.jks
 
