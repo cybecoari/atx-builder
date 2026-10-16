@@ -52,7 +52,7 @@ jobs:
           echo "ANDROID_BT=$HOME/android-sdk/build-tools/35.0.0" >> $GITHUB_ENV
 
       - name: Desmontar APK original
-        run: apktool d -f atx_3.0_src.apk -o decoded
+        run: apktool d -f atxmod.apk -o decoded
 
       - name: Renomear pacote
         env:
