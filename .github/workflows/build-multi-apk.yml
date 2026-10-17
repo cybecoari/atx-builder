@@ -20,7 +20,12 @@ on:
         type: string
         default: Meu App
       credential:
-        description: Credencial (deixe em branco se o app usa login manual)
+        description: Credencial (opcional, deixe vazio se usa login manual)
+        required: false
+        type: string
+        default: ""
+      new_package:
+        description: Novo pacote (opcional, vazio = mantém original)
         required: false
         type: string
         default: ""
@@ -61,11 +66,15 @@ jobs:
       - name: Desmontar APK base
         run: apktool d -f "${{ inputs.base_apk }}" -o decoded
 
+      - name: Renomear pacote (se preenchido)
+        if: inputs.new_package != ''
+        run: python3 scripts/rename_package.py decoded "${{ inputs.new_package }}"
+
       - name: Personalizar nome e credencial
         env:
           APP_NAME: ${{ inputs.app_name }}
           ATX_CREDENTIAL: ${{ inputs.credential }}
-        run: python3 scripts/customize_simples.py decoded "$APP_NAME" "$ATX_CREDENTIAL"
+        run: python3 scripts/customize.py decoded "$APP_NAME" "$ATX_CREDENTIAL"
 
       - name: Reconstruir APK
         run: |
