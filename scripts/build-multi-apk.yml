@@ -1,92 +1,57 @@
-name: Build Multi APK
+#!/usr/bin/env python3
+"""Personaliza um APK descompilado (nome + credencial opcional)."""
+import pathlib
+import re
+import sys
 
-on:
-  workflow_dispatch:
-    inputs:
-      base_apk:
-        description: APK base
-        required: true
-        type: choice
-        options:
-          - atx_3.0_src.apk
-          - atxmod.apk
-          - ConnectPlus.apk
-          - cybercoari.apk
-          - vip_2.1.apk
-        default: atx_3.0_src.apk
-      app_name:
-        description: Nome exibido no Android
-        required: true
-        type: string
-        default: Meu App
-      credential:
-        description: Credencial (deixe em branco se o app usa login manual)
-        required: false
-        type: string
-        default: ""
+if len(sys.argv) != 4:
+    raise SystemExit("Uso: customize.py DIRETORIO NOME_APP CREDENCIAL")
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Baixar repositorio
-        uses: actions/checkout@v4
+root = pathlib.Path(sys.argv[1]).resolve()
+app_name = sys.argv[2]
+credential = sys.argv[3].strip()
 
-      - name: Configurar Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+manifest = root / "AndroidManifest.xml"
+credential_file = root / "assets" / "config" / "credential.txt"
 
-      - name: Instalar apktool
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget zipalign
-          sudo wget -q https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar -O /usr/local/bin/apktool.jar
-          sudo wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O /usr/local/bin/apktool
-          sudo chmod +x /usr/local/bin/apktool
-          sudo sed -i 's|^exec java -jar .*|exec java -jar /usr/local/bin/apktool.jar "$@"|' /usr/local/bin/apktool
+if not app_name.strip():
+    raise SystemExit("Nome do app vazio")
+if "\n" in app_name or "\r" in app_name:
+    raise SystemExit("Nome do app contém quebra de linha")
 
-      - name: Baixar Android build-tools
-        run: |
-          mkdir -p $HOME/android-sdk/cmdline-tools
-          cd $HOME/android-sdk/cmdline-tools
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O tools.zip
-          unzip -q tools.zip
-          mv cmdline-tools latest
-          yes | $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null
-          $HOME/android-sdk/cmdline-tools/latest/bin/sdkmanager "build-tools;35.0.0" > /dev/null
-          echo "ANDROID_BT=$HOME/android-sdk/build-tools/35.0.0" >> $GITHUB_ENV
+if credential:
+    if "\n" in credential or "\r" in credential or "\x00" in credential:
+        raise SystemExit("Credencial contém caracteres inválidos")
+    if len(credential) > 200:
+        raise SystemExit("Credencial longa demais")
+    if not re.fullmatch(r"[A-Za-z0-9_\-\.=]+", credential):
+        raise SystemExit("Credencial contém caracteres não permitidos")
 
-      - name: Desmontar APK base
-        run: apktool d -f "${{ inputs.base_apk }}" -o decoded
+if not manifest.is_file():
+    raise SystemExit("AndroidManifest.xml não encontrado")
 
-      - name: Personalizar nome e credencial
-        env:
-          APP_NAME: ${{ inputs.app_name }}
-          ATX_CREDENTIAL: ${{ inputs.credential }}
-        run: python3 scripts/customize_simples.py decoded "$APP_NAME" "$ATX_CREDENTIAL"
+def xml_escape(s: str) -> str:
+    return (s.replace("&", "&amp;")
+             .replace("<", "&lt;")
+             .replace(">", "&gt;")
+             .replace('"', "&quot;"))
 
-      - name: Reconstruir APK
-        run: |
-          apktool b decoded -o atx-unsigned.apk
-          $ANDROID_BT/zipalign -f 4 atx-unsigned.apk atx-aligned.apk
+escaped = xml_escape(app_name)
+manifest_text = manifest.read_text(encoding="utf-8")
 
-      - name: Assinar APK
-        env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          printf '%s' "$KEYSTORE_B64" | tr -d '\n\r ' | base64 -d > $RUNNER_TEMP/ks.jks
-          $ANDROID_BT/apksigner sign --ks $RUNNER_TEMP/ks.jks --ks-key-alias "$KEY_ALIAS" --ks-pass env:KS_PASS --key-pass env:KEY_PASS --out atx-signed.apk atx-aligned.apk
-          $ANDROID_BT/apksigner verify --verbose atx-signed.apk
-          rm -f $RUNNER_TEMP/ks.jks
+pattern = re.compile(r'(android:label=")((?!@string/)[^"]*)(")')
+new_text, count = pattern.subn(rf'\g<1>{escaped}\g<3>', manifest_text)
 
-      - name: Publicar APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: multi-apk
-          path: atx-signed.apk
-          retention-days: 7
+if count == 0:
+    raise SystemExit("Nenhum android:label para substituir foi encontrado")
+
+manifest.write_text(new_text, encoding="utf-8")
+print(f"OK: {count} labels substituídos por '{app_name}'")
+
+if credential and credential_file.is_file():
+    credential_file.write_text(credential, encoding="utf-8")
+    print(f"OK: credencial escrita em {credential_file}")
+elif credential:
+    print(f"AVISO: credencial fornecida mas {credential_file} não existe. Ignorando.")
+else:
+    print("OK: sem credencial (app usa login manual).")
