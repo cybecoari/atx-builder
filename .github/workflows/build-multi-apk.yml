@@ -78,7 +78,12 @@ jobs:
 
       - name: Reconstruir APK
         run: |
-          apktool b decoded -o atx-unsigned.apk
+          if [ "${{ inputs.base_apk }}" = "vip_2.1.apk" ]; then
+            echo "Usando aapt (v1) para o vip_2.1.apk..."
+            apktool b decoded -o atx-unsigned.apk --use-aapt1
+          else
+            apktool b decoded -o atx-unsigned.apk
+          fi
           $ANDROID_BT/zipalign -f 4 atx-unsigned.apk atx-aligned.apk
 
       - name: Assinar APK
